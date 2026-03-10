@@ -199,10 +199,9 @@ Run the test suite:
 python -m pytest tests/ -v
 ```
 
-Run linting (install `ruff` first if needed):
+Run linting:
 
 ```bash
-python -m pip install ruff
 python -m ruff check .
 ```
 
