@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+.env
+
+# Data & artifacts
+artifacts/
+data/
+
+# OS / tooling
+.DS_Store
+.ipynb_checkpoints/

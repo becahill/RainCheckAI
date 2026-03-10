@@ -4,6 +4,7 @@ from typing import List
 
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_datetime64_any_dtype
 
 
 LOGGER = logging.getLogger(__name__)
@@ -33,8 +34,10 @@ def round_timestamp_to_hour(df: pd.DataFrame, timestamp_col: str = "timestamp") 
         DataFrame with an additional ``time_key`` column.
     """
     df = df.copy()
-    if not np.issubdtype(df[timestamp_col].dtype, np.datetime64):
-        raise TypeError(f"Column '{timestamp_col}' must be datetime64[ns], got {df[timestamp_col].dtype}")
+    if not is_datetime64_any_dtype(df[timestamp_col]):
+        raise TypeError(
+            f"Column '{timestamp_col}' must be datetime64[ns] or datetime64[ns, tz], got {df[timestamp_col].dtype}",
+        )
 
     # Round to the nearest hour using pandas' dt.round.
     LOGGER.info("Creating hourly time_key from '%s'", timestamp_col)
@@ -106,8 +109,10 @@ def add_cyclical_time_encoding(
         DataFrame with ``sin_hour`` and ``cos_hour`` features.
     """
     df = df.copy()
-    if not np.issubdtype(df[timestamp_col].dtype, np.datetime64):
-        raise TypeError(f"Column '{timestamp_col}' must be datetime64[ns], got {df[timestamp_col].dtype}")
+    if not is_datetime64_any_dtype(df[timestamp_col]):
+        raise TypeError(
+            f"Column '{timestamp_col}' must be datetime64[ns] or datetime64[ns, tz], got {df[timestamp_col].dtype}",
+        )
 
     LOGGER.info("Adding cyclical hour-of-day encoding from '%s'.", timestamp_col)
     hours = df[timestamp_col].dt.hour.astype(float)
@@ -301,4 +306,3 @@ if __name__ == "__main__":
         timestamp_col="timestamp",
         delay_col="delay_minutes",
     )
-
