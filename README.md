@@ -191,6 +191,21 @@ Whenever code is pushed to `main` or a pull request targets `main`, GitHub Actio
 
 This ensures that the ingestion, temporal engineering, and core modeling logic remain stable as the project evolves.
 
+## Contributing
+
+Run the test suite:
+
+```bash
+python -m pytest tests/ -v
+```
+
+Run linting (install `ruff` first if needed):
+
+```bash
+python -m pip install ruff
+python -m ruff check .
+```
+
 ## Extending RainCheckAI
 
 Potential extensions for future work include:
@@ -200,4 +215,3 @@ Potential extensions for future work include:
 - Surfacing SHAP-based explanations for urban planners interested in “why” certain routes are fragile.
 
 RainCheckAI is intentionally structured so that these additions can be layered on without rewriting the existing pipeline, making it a strong foundation for a Smart City–focused ML portfolio.
-

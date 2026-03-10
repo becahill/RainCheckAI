@@ -17,9 +17,8 @@ def test_standardise_timestamp_parses_and_flags_invalid() -> None:
     result = standardise_timestamp(df, timestamp_col="raw_ts", new_col="ts", utc=True)
 
     assert "ts" in result.columns
-    assert pd.api.types.is_datetime64tz_dtype(result["ts"])
+    assert isinstance(result["ts"].dtype, pd.DatetimeTZDtype)
 
     # First row should parse to a valid timestamp, second should be NaT
     assert pd.notna(result.loc[0, "ts"])
     assert pd.isna(result.loc[1, "ts"])
-
