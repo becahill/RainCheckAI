@@ -17,7 +17,8 @@ def test_standardize_timestamp_column_parses_and_flags_invalid() -> None:
 
     result = standardize_timestamp_column(df, source_column="raw_ts", target_column="timestamp")
 
-    assert str(result["timestamp"].dtype) == "datetime64[ns, UTC]"
+    assert isinstance(result["timestamp"].dtype, pd.DatetimeTZDtype)
+    assert str(result["timestamp"].dt.tz) == "UTC"
     assert pd.notna(result.loc[0, "timestamp"])
     assert pd.isna(result.loc[1, "timestamp"])
 
