@@ -1,163 +1,68 @@
+"""Local CLI for RainCheckAI inference."""
+
+from __future__ import annotations
+
 import argparse
 import json
-import logging
-from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
 
-import joblib
-import numpy as np
-import pandas as pd
-from xgboost import XGBRegressor
+from raincheckai.api.schemas import PredictRequest
+from raincheckai.inference import InferenceService
+from raincheckai.logging_utils import configure_logging
+from raincheckai.telemetry import TelemetryCollector
 
 
-LOGGER = logging.getLogger(__name__)
-
-DEFAULT_MODEL_PATH = Path("artifacts/model.joblib")
-DEFAULT_FEATURE_NAMES_PATH = Path("artifacts/feature_names.joblib")
-
-
-def configure_logging(log_level: int = logging.INFO) -> None:
-    """Configure logging for prediction-time components."""
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
-    )
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for local inference."""
+    parser = argparse.ArgumentParser(description="Run a local RainCheckAI prediction.")
+    parser.add_argument("--request-json", type=str, help="Full prediction request payload as JSON.")
+    parser.add_argument("--example", action="store_true", help="Run a built-in example request.")
+    return parser.parse_args()
 
 
-def load_model_artifacts(
-    model_path: Path = DEFAULT_MODEL_PATH,
-    feature_names_path: Path = DEFAULT_FEATURE_NAMES_PATH,
-) -> Tuple[XGBRegressor, List[str]]:
-    """Load a trained XGBoost model and corresponding feature names.
-
-    Parameters
-    ----------
-    model_path:
-        Location of the persisted model.
-    feature_names_path:
-        Location of the persisted feature name list.
-
-    Returns
-    -------
-    Tuple[XGBRegressor, List[str]]
-        Loaded model and ordered list of feature names.
-    """
-    LOGGER.info("Loading trained model from %s", model_path)
-    model = joblib.load(model_path)
-
-    LOGGER.info("Loading feature names from %s", feature_names_path)
-    feature_names: List[str] = joblib.load(feature_names_path)
-
-    return model, feature_names
-
-
-def build_feature_vector(
-    event: Dict[str, Any],
-    feature_names: Iterable[str],
-) -> pd.DataFrame:
-    """Construct a single-row feature matrix from a JSON-like event.
-
-    The function assumes that the incoming JSON already contains
-    model-ready numeric features with keys matching ``feature_names``.
-    Missing features are filled with ``NaN`` and extra keys are ignored.
-
-    Parameters
-    ----------
-    event:
-        Dictionary representing a new transit event.
-    feature_names:
-        Names and ordering of features expected by the model.
-
-    Returns
-    -------
-    pd.DataFrame
-        Single-row DataFrame in the correct column order.
-    """
-    feature_names_list = list(feature_names)
-    data = {name: event.get(name, np.nan) for name in feature_names_list}
-    return pd.DataFrame([data], columns=feature_names_list)
-
-
-def predict_delay_from_event(
-    model: XGBRegressor,
-    feature_names: List[str],
-    event: Dict[str, Any],
-) -> float:
-    """Generate a delay prediction in minutes for a single event.
-
-    Parameters
-    ----------
-    model:
-        Trained XGBoost regressor.
-    feature_names:
-        Ordered feature names used during model training.
-    event:
-        JSON-like mapping containing numeric feature values.
-
-    Returns
-    -------
-    float
-        Predicted delay in minutes.
-    """
-    features_df = build_feature_vector(event, feature_names)
-    prediction_array = model.predict(features_df)
-    prediction = float(prediction_array[0])
-    LOGGER.info("Generated prediction: %.4f minutes delay", prediction)
-    return prediction
+def _example_payload() -> dict[str, object]:
+    """Return a representative prediction payload."""
+    return {
+        "transit": {
+            "route_id": "BLUE_LINE",
+            "observed_at": "2026-04-18T08:30:00Z",
+            "stop_id": "STOP_101",
+            "city_zone": "downtown",
+            "observed_delay_minutes": 6.0,
+            "historical_delay_minutes": [2.0, 4.0, 5.0],
+            "scheduled_headway_minutes": 10.0,
+            "service_alert_level": "minor",
+        },
+        "weather": {
+            "precipitation_mm": 5.2,
+            "wind_speed_kph": 24.0,
+            "temperature_c": 11.0,
+            "visibility_km": 5.5,
+        },
+        "event": {
+            "event_type": "concert",
+            "event_severity": "medium",
+            "attendance": 12000.0,
+            "is_active": True,
+        },
+    }
 
 
 def main() -> None:
-    """CLI entry point for local predictions.
-
-    Usage examples
-    --------------
-    Predict from a JSON string:
-
-        python -m src.predict --event-json \
-          '{"sin_hour": 0.0, "cos_hour": 1.0, "prev_stop_delay_minutes": 2.5}'
-
-    Or use the built-in example payload:
-
-        python -m src.predict --example
-    """
-    parser = argparse.ArgumentParser(description="Local CLI for RainCheckAI predictions.")
-    parser.add_argument(
-        "--event-json",
-        type=str,
-        help="JSON string with model-ready feature values.",
-    )
-    parser.add_argument(
-        "--example",
-        action="store_true",
-        help="Use a built-in example feature payload.",
-    )
-    args = parser.parse_args()
-
-    if not args.event_json and not args.example:
-        parser.error("Provide --event-json or --example.")
-
+    """Execute the local inference CLI."""
     configure_logging()
-    model, feature_names = load_model_artifacts()
+    args = parse_args()
 
-    if args.example:
-        event: Dict[str, Any] = {
-            "sin_hour": 0.0,
-            "cos_hour": 1.0,
-            "prev_stop_delay_minutes": 5.0,
-            "precipitation": 0.0,
-            "wind_speed": 3.0,
-            "temperature": 15.0,
-        }
-    else:
-        try:
-            event = json.loads(args.event_json or "")
-        except json.JSONDecodeError as exc:
-            raise SystemExit(f"Invalid JSON for --event-json: {exc}") from exc
+    if not args.request_json and not args.example:
+        raise SystemExit("Provide --request-json or --example.")
 
-    prediction = predict_delay_from_event(model, feature_names, event)
-    print(prediction)
+    payload = _example_payload() if args.example else json.loads(args.request_json or "{}")
+    request = PredictRequest.model_validate(payload)
+
+    service = InferenceService(telemetry=TelemetryCollector())
+    service.load()
+    result = service.predict(context=request.to_domain(), request_id="cli-request")
+    print(json.dumps(result.__dict__, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":
     main()
-
