@@ -1,24 +1,57 @@
+"""Tests for the RainCheckAI ingestion layer."""
+
+from __future__ import annotations
+
 import pandas as pd
 
-from ingest_data import standardise_timestamp
+from raincheckai.ingestion import (
+    clean_event_data,
+    clean_transport_data,
+    standardize_timestamp_column,
+)
 
 
-def test_standardise_timestamp_parses_and_flags_invalid() -> None:
-    """standardise_timestamp should parse valid timestamps and coerce invalid ones."""
+def test_standardize_timestamp_column_parses_and_flags_invalid() -> None:
+    """Invalid timestamps should be coerced to NaT in UTC."""
+    df = pd.DataFrame({"raw_ts": ["2026-01-01T10:00:00Z", "bad-timestamp"]})
+
+    result = standardize_timestamp_column(df, source_column="raw_ts", target_column="timestamp")
+
+    assert isinstance(result["timestamp"].dtype, pd.DatetimeTZDtype)
+    assert str(result["timestamp"].dt.tz) == "UTC"
+    assert pd.notna(result.loc[0, "timestamp"])
+    assert pd.isna(result.loc[1, "timestamp"])
+
+
+def test_clean_transport_data_is_idempotent_and_applies_defaults() -> None:
+    """Transport cleaning should deduplicate rows and inject stable defaults."""
     df = pd.DataFrame(
         {
-            "raw_ts": [
-                "2024-01-01 10:00:00",
-                "not-a-timestamp",
-            ],
-        },
+            "route_id": ["BLUE_LINE", "BLUE_LINE"],
+            "timestamp": ["2026-04-18T08:00:00Z", "2026-04-18T08:00:00Z"],
+            "delay_minutes": [500.0, 500.0],
+        }
     )
 
-    result = standardise_timestamp(df, timestamp_col="raw_ts", new_col="ts", utc=True)
+    cleaned = clean_transport_data(df)
 
-    assert "ts" in result.columns
-    assert isinstance(result["ts"].dtype, pd.DatetimeTZDtype)
+    assert len(cleaned) == 1
+    assert cleaned.loc[0, "delay_minutes"] == 240.0
+    assert cleaned.loc[0, "stop_id"] == "UNKNOWN_STOP"
+    assert cleaned.loc[0, "city_zone"] == "unknown"
+    assert cleaned.loc[0, "service_alert_level"] == "normal"
+    assert cleaned.loc[0, "scheduled_headway_minutes"] == 10.0
 
-    # First row should parse to a valid timestamp, second should be NaT
-    assert pd.notna(result.loc[0, "ts"])
-    assert pd.isna(result.loc[1, "ts"])
+
+def test_clean_event_data_returns_empty_contract_when_absent() -> None:
+    """Missing event inputs should still produce a valid empty event frame."""
+    cleaned = clean_event_data(None)
+
+    assert cleaned.empty
+    assert list(cleaned.columns) == [
+        "start_timestamp",
+        "end_timestamp",
+        "event_type",
+        "event_severity",
+        "attendance",
+    ]
